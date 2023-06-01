@@ -138,7 +138,7 @@ class PowerScalar(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        pass
+        return self.scalar * array_api.power(node.inputs[0], self.scalar - 1) * out_grad
         #return
         ### END YOUR SOLUTION
 
@@ -263,18 +263,21 @@ class Summation(TensorOp):
         return array_api.sum(a, axis=self.axes)
         ### END YOUR SOLUTION
 
-    def gradient(self, out_grad, node):
+    def gradient(self, out_grad: Tensor, node: Tensor):
         ### BEGIN YOUR SOLUTION
-        a = node.inputs[0]
-        old_shape = out_grad.shape
-        new_shape = [1] * len(a.shape)
+        shape = node.inputs[0].shape
+        new_shape = [1] * len(shape)
+        if self.axes:
+            s = set(self.axes)
+        else:
+            s = set(range(len(shape)))
         j = 0
-        for i in range(len(a.shape)):
-          if j < len(old_shape) and old_shape[j] == a.shape[i]:
-            new_shape[i] = a.shape[i]
-            j += 1
-        return broadcast_to(reshape(out_grad, tuple(new_shape)), a.shape)
-        ### END YOUR SOLUTION
+        for i in range(len(shape)):
+            if i not in s:
+                new_shape[i] = out_grad.shape[j]
+                j += 1
+        result = broadcast_to(reshape(out_grad, tuple(new_shape)), shape)
+        return result
 
 
 def summation(a, axes=None):
@@ -365,7 +368,7 @@ class ReLU(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        # 在这里终于知道].realize_cached_data() 是什么意思了，
+        # 在这里终于知道.realize_cached_data() 是什么意思了，
         # 因为Tensor是一个不能被索引以及比较的对象，所以需要使用realize_cached_data()来获取值
         input = node.inputs[0]
         return out_grad * (input.realize_cached_data() > 0)
@@ -382,14 +385,33 @@ class LogSumExp(TensorOp):
     def __init__(self, axes: Optional[tuple] = None):
         self.axes = axes
 
+
+
     def compute(self, Z):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        max_Z = array_api.max(Z, axis=self.axes, keepdims=True)
+        return array_api.log(array_api.sum(array_api.exp(Z - max_Z), axis=self.axes)) \
+               + array_api.max(Z, axis=self.axes, keepdims=False)
+        # raise NotImplementedError()
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        Z = node.inputs[0]
+        if self.axes:
+          shape = [1] * len(Z.shape)
+          j = 0
+          for i in range(len(shape)):
+            if i not in self.axes:
+              shape[i] = node.shape[j]
+              j += 1
+          node_new = node.reshape(shape)
+          grad_new = out_grad.reshape(shape)
+        else:
+          node_new = node
+          grad_new = out_grad
+        return grad_new * exp(Z - node_new)
+        # raise NotImplementedError()
         ### END YOUR SOLUTION
 
 
