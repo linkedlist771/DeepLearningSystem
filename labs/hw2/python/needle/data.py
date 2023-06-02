@@ -1,6 +1,7 @@
 import numpy as np
 from .autograd import Tensor
-
+import gzip
+import struct
 from typing import Iterator, Optional, List, Sized, Union, Iterable, Any
 
 
@@ -24,7 +25,12 @@ class RandomFlipHorizontal(Transform):
         """
         flip_img = np.random.rand() < self.p
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if flip_img:
+            return np.flip(img, axis=1)
+            # return img[:, ::-1, :]
+        else:
+            return img
+        # raise NotImplementedError()
         ### END YOUR SOLUTION
 
 
@@ -42,7 +48,19 @@ class RandomCrop(Transform):
         """
         shift_x, shift_y = np.random.randint(low=-self.padding, high=self.padding+1, size=2)
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        H, W = img.shape[:2]
+        img_pad = np.zeros_like(img)
+        if abs(shift_x) >= H or abs(shift_y) >= W:
+            return img_pad
+        img_pad[
+            max(0, -shift_x):min(H, H-shift_x),
+            max(0, -shift_y):min(W, W-shift_y), :
+        ] = img[
+            max(0, shift_x):min(H, H+shift_x),
+            max(0, shift_y):min(W, W+shift_y), :
+        ]
+        return img_pad
+        # raise NotImplementedError()
         ### END YOUR SOLUTION
 
 
@@ -101,15 +119,80 @@ class DataLoader:
 
     def __iter__(self):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if self.shuffle:
+            dataset_size = len(self.dataset)
+            order = np.arange(dataset_size)
+            np.random.shuffle(order)
+            self.ordering = np.array_split(order,
+                                           range(self.batch_size, dataset_size, self.batch_size))
+        self.index = 0
         ### END YOUR SOLUTION
         return self
 
     def __next__(self):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if self.index == len(self.ordering):
+            raise StopIteration
+        batch = [Tensor(x) for x in self.dataset[self.ordering[self.index]]]
+        self.index += 1
+        return tuple(batch)
+        # raise NotImplementedError()
         ### END YOUR SOLUTION
 
+
+
+def parse_mnist(image_filesname, label_filename):
+    """ Read an images and labels file in MNIST format.  See this page:
+    http://yann.lecun.com/exdb/mnist/ for a description of the file format.
+
+    Args:
+        image_filename (str): name of gzipped images file in MNIST format
+        label_filename (str): name of gzipped labels file in MNIST format
+
+    Returns:
+        Tuple (X,y):
+            X (numpy.ndarray[np.float32]): 2D numpy array containing the loaded
+                data.  The dimensionality of the data should be
+                (num_examples x input_dim) where 'input_dim' is the full
+                dimension of the data, e.g., since MNIST images are 28x28, it
+                will be 784.  Values should be of type np.float32, and the data
+                should be normalized to have a minimum value of 0.0 and a
+                maximum value of 1.0.
+
+            y (numpy.ndarray[dypte=np.int8]): 1D numpy array containing the
+                labels of the examples.  Values should be of type np.int8 and
+                for MNIST will contain the values 0-9.
+    """
+    ### BEGIN YOUR SOLUTION
+    f = gzip.open(image_filesname)
+    data = f.read()
+    f.close()
+    h = struct.unpack_from('>IIII', data, 0)
+    offset = struct.calcsize('>IIII')
+    imgNum = h[1]
+    rows = h[2]
+    columns = h[3]
+    pixelString = '>' + str(imgNum * rows * columns) + 'B'
+    pixels = struct.unpack_from(pixelString, data, offset)
+    X = np.reshape(pixels, [imgNum, rows * columns]).astype('float32')
+    X_max = np.max(X)
+    X_min = np.min(X)
+    # X_max = np.max(X, axis=1, keepdims=True)
+    # X_min = np.min(X, axis=1, keepdims=True)
+
+    X_normalized = ((X - X_min) / (X_max - X_min))
+
+    f = gzip.open(label_filename)
+    data = f.read()
+    f.close()
+    h = struct.unpack_from('>II', data, 0)
+    offset = struct.calcsize('>II')
+    num = h[1]
+    labelString = '>' + str(num) + 'B'
+    labels = struct.unpack_from(labelString, data, offset)
+    y = np.reshape(labels, [num]).astype('uint8')
+
+    return (X_normalized, y)
 
 class MNISTDataset(Dataset):
     def __init__(
@@ -119,17 +202,25 @@ class MNISTDataset(Dataset):
         transforms: Optional[List] = None,
     ):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        super(MNISTDataset, self).__init__(transforms)
+        self.images, self.labels = parse_mnist(image_filename, label_filename)
+        # raise NotImplementedError()
         ### END YOUR SOLUTION
 
     def __getitem__(self, index) -> object:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        X, y = self.images[index], self.labels[index]
+        if self.transforms:
+            X = self.apply_transforms(X.reshape((28, 28, -1)))
+            return X.reshape(-1, 28*28), y
+        return X, y
+        # raise NotImplementedError()
         ### END YOUR SOLUTION
 
     def __len__(self) -> int:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return self.labels.shape[0]
+        # raise NotImplementedError()
         ### END YOUR SOLUTION
 
 class NDArrayDataset(Dataset):

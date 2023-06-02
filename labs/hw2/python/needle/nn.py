@@ -90,15 +90,16 @@ class Linear(Module):
         self.device = device
         self.dtype = dtype
         # 如果有偏置的话
-        weight = init.kaiming_uniform(in_features, out_features, nonlinearity="relu", device=device, dtype=dtype)
-        self.weight = Tensor(weight)
+
+        weight = init.kaiming_uniform(in_features, out_features, device=device, dtype=dtype)
+        self.weight = Parameter(weight)# Tensor(weight)
         if bias:
             # 然而，如果你的代码中某些地方假定偏置是一个二维张量，而且第一个维度为1，那么reshape就是必须的。
             # 这可能是为了保持与特定操作的兼容性，例如广播或矩阵乘法。
             # 另外一种可能的原因是，在使用Kaiming初始化时，fan_in和fan_out参数的顺序可能会影响到初始化的结果。
             # 在你的代码中，可能作者想要使用out_features作为fan_in来进行初始化。然后，通过reshape操作将偏置调整为正确的形状。
             # 不过在偏置初始化中，一般不需要这样做，因为偏置通常都被初始化为零或者接近零的小值。
-            self.bias = init.kaiming_uniform(out_features, 1, dtype=dtype).reshape((1, out_features))
+            self.bias = Parameter(init.kaiming_uniform(out_features, 1, dtype=dtype, device=device).reshape((1, out_features)))
             # self.bias = init.kaiming_uniform(1, out_features, nonlinearity="relu", device=device, dtype=dtype)
         else:
             self.bias = None
@@ -110,7 +111,8 @@ class Linear(Module):
         if self.bias:
             # 如果有偏置的话
             a_l = ops.matmul(X, self.weight)
-            return a_l + self.bias
+            # 这里要一个broadcast， 这是为什么？
+            return a_l + self.bias.broadcast_to(a_l.shape)
         else:
             return ops.matmul(X, self.weight)
         # raise NotImplementedError()
@@ -219,8 +221,8 @@ class BatchNorm1d(Module):
         self.device = device
         self.dtype = dtype
         ### BEGIN YOUR SOLUTION
-        self.weight = Parameter(init.ones(self.dim, device=self.device, dtype=self.dtype))
-        self.bias = Parameter(init.zeros(self.dim, device=self.device, dtype=self.dtype))
+        self.weight = Parameter(init.ones(self.dim, device=self.device, dtype=self.dtype), requires_grad=True)
+        self.bias = Parameter(init.zeros(self.dim, device=self.device, dtype=self.dtype), requires_grad=True)
         self.running_mean = init.zeros(self.dim, device=self.device, dtype=self.dtype)
         self.running_var = init.ones(self.dim, device=self.device, dtype=self.dtype)
         ### END YOUR SOLUTION
@@ -232,8 +234,6 @@ class BatchNorm1d(Module):
         # running estimates
         mean = x.sum(axes=(0,)) / batch_size
         x_minus_mean = x - mean.broadcast_to(x.shape)
-        print(mean)
-        print(mean.broadcast_to(x.shape))
         var = (x_minus_mean ** 2).sum(axes=(0, )) / batch_size
 
         if self.training:
@@ -282,7 +282,8 @@ class Dropout(Module):
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
         if self.training:
-            return x * init.randb(*x.shape, p=self.p) / (1 - self.p)
+            # 踩坑，一个这里是1-P， 有1-P的概率保留，有P的概率丢弃
+            return x * init.randb(*x.shape, p=(1 - self.p)) / (1 - self.p)
         else:
             return x
         # raise NotImplementedError()
@@ -296,7 +297,8 @@ class Residual(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return x + self.fn(x)
+        #  raise NotImplementedError()
         ### END YOUR SOLUTION
 
 

@@ -30,9 +30,36 @@ def parse_mnist(image_filesname, label_filename):
                 for MNIST will contain the values 0-9.
     """
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    f = gzip.open(image_filesname)
+    data = f.read()
+    f.close()
+    h = struct.unpack_from('>IIII', data, 0)
+    offset = struct.calcsize('>IIII')
+    imgNum = h[1]
+    rows = h[2]
+    columns = h[3]
+    pixelString = '>' + str(imgNum * rows * columns) + 'B'
+    pixels = struct.unpack_from(pixelString, data, offset)
+    X = np.reshape(pixels, [imgNum, rows * columns]).astype('float32')
+    X_max = np.max(X)
+    X_min = np.min(X)
+    # X_max = np.max(X, axis=1, keepdims=True)
+    # X_min = np.min(X, axis=1, keepdims=True)
 
+    X_normalized = ((X - X_min) / (X_max - X_min))
+
+    f = gzip.open(label_filename)
+    data = f.read()
+    f.close()
+    h = struct.unpack_from('>II', data, 0)
+    offset = struct.calcsize('>II')
+    num = h[1]
+    labelString = '>' + str(num) + 'B'
+    labels = struct.unpack_from(labelString, data, offset)
+    y = np.reshape(labels, [num]).astype('uint8')
+
+    return (X_normalized, y)
+    # END YOUR SOLUTION
 
 def softmax_loss(Z, y_one_hot):
     """ Return softmax loss.  Note that for the purposes of this assignment,
@@ -51,11 +78,23 @@ def softmax_loss(Z, y_one_hot):
         Average softmax loss over the sample. (ndl.Tensor[np.float32])
     """
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    # 找到预测输出中最大的值exp/sum(exp) 的值， 也就是用真实的one hot 想乘去掉其他的
+    batch_size = Z.shape[0]
+    # y_one_hot = y_one_hot.astype('float32')
+    y_one_hot = ndl.summation(Z * y_one_hot, axes=1)
+    Z1 = ndl.log(ndl.summation(ndl.exp(Z), axes=1))
+    loss = ndl.summation(Z1-y_one_hot)/batch_size
+    return loss
+
+    # m = Z.shape[0]
+    # Z1 = ndl.ops.summation(ndl.ops.log(ndl.ops.summation(ndl.ops.exp(Z), axes=(1,))))
+    # Z2 = ndl.ops.summation(Z * y_one_hot)
+    # return (Z1 - Z2) / m
+    # raise NotImplementedError()
     ### END YOUR SOLUTION
 
 
-def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
+def nn_epoch(X, y, W1, W2, lr=0.1, batch=100):
     """ Run a single epoch of SGD for a two-layer neural network defined by the
     weights W1 and W2 (with no bias terms):
         logits = ReLU(X * W1) * W1
@@ -80,7 +119,39 @@ def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
     """
 
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    input_dim = X.shape[0]
+    for i in range(0, input_dim, batch):
+        X_batch = X[i:i + batch]
+        y_batch = y[i:i + batch]
+        X_batch = ndl.Tensor(X_batch)
+        layer1_output = ndl.relu(ndl.matmul(X_batch, W1))
+        layer2_output = ndl.matmul(layer1_output, W2)
+        y_one_hot = np.zeros(layer2_output.shape)
+        y_one_hot = y_one_hot.astype('float32')
+        y_one_hot[np.arange(layer2_output.shape[0]), y_batch] = 1
+        y_one_hot = ndl.Tensor(y_one_hot)
+        loss = softmax_loss(layer2_output, y_one_hot)
+        loss.backward()
+        W1 -= lr * W1.grad
+        W2 -= lr * W2.grad
+        W1 = W1.detach()
+        W2 = W2.detach()
+    return W1, W2
+    # m = X.shape[0]
+    # for i in range(0, m, batch):
+    #     X_batch = X[i: i + batch]
+    #     y_batch = y[i: i + batch]
+    #     X_batch = ndl.Tensor(X_batch)
+    #     Z1 = ndl.ops.relu(X_batch @ W1)
+    #     Z = Z1 @ W2
+    #     y_one_hot = np.zeros(Z.shape, dtype="float32")
+    #     y_one_hot[np.arange(Z.shape[0]), y_batch] = 1
+    #     loss = softmax_loss(Z, ndl.Tensor(y_one_hot))
+    #     loss.backward()
+    #
+    #     W1 = (W1 - lr * W1.grad).detach()
+    #     W2 = (W2 - lr * W2.grad).detach()
+    # return W1, W2
     ### END YOUR SOLUTION
 
 
@@ -92,3 +163,4 @@ def loss_err(h,y):
     y_one_hot[np.arange(y.size), y] = 1
     y_ = ndl.Tensor(y_one_hot)
     return softmax_loss(h,y_).numpy(), np.mean(h.numpy().argmax(axis=1) != y)
+
